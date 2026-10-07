@@ -1,0 +1,10 @@
+.env
+.env*
+!.env.example
+run_log.txt
+*.log
+.claude/settings.local.json
+output/
+__pycache__/
+*.pyc
+.venv/
