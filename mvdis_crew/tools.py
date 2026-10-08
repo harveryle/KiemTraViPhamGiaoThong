@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
 from .mailer import send_email
-from .report import diff_with_history
+from .report import diff_with_history, should_skip_email
 from .scraper import QueryResult, query_violations
 from .translate import build_bilingual_email
 
@@ -21,6 +21,7 @@ class RunState:
     result: QueryResult | None = None
     summary: dict | None = None
     email_sent: bool = False
+    email_skipped: bool = False  # cố ý không gửi (SKIP_EMAIL_IF_NO_VIOLATION + không có vi phạm)
     attachments: list[str] = field(default_factory=list)
 
 
@@ -89,6 +90,9 @@ class SendEmailTool(_StateTool):
         if self.state.summary is None:
             result = self.state.result or QueryResult(status="error", message="Chưa tra cứu.")
             self.state.summary = diff_with_history(result, self.state.settings.output_dir / "history.json")
+        if should_skip_email(self.state.summary, self.state.settings.skip_email_if_no_violation):
+            self.state.email_skipped = True
+            return "Không có vi phạm và SKIP_EMAIL_IF_NO_VIOLATION đang bật nên KHÔNG gửi email. Kết thúc."
         mail = build_bilingual_email(self.state.summary, self.state.settings)
         send_email(
             self.state.settings, mail.subject, mail.html, self.state.attachments, mail.inline_images, mail.text
