@@ -122,11 +122,35 @@ class QueryResult:
     raw_text_snapshot_path: Optional[Path] = None
 
 
+_ddddocr_instance = None
+
+
+def ocr_captcha(image_path: Path) -> str:
+    """Tu giai captcha bang ddddocr (nap model mot lan roi tai su dung)."""
+    global _ddddocr_instance
+    if _ddddocr_instance is None:
+        try:
+            import ddddocr
+        except ImportError:
+            log("LOI: CAPTCHA_MODE=auto can thu vien ddddocr. Cai bang: pip install ddddocr")
+            sys.exit(1)
+        _ddddocr_instance = ddddocr.DdddOcr(show_ad=False)
+    return _ddddocr_instance.classification(image_path.read_bytes()).strip()
+
+
 def solve_captcha(page: Page, cfg: Config) -> str:
-    """Chup anh captcha va lay ma. KHONG tu dong OCR/bypass theo mac dinh."""
+    """Chup anh captcha va lay ma (tu dong OCR neu CAPTCHA_MODE=auto)."""
     captcha_path = cfg.output_dir / f"captcha_{int(time.time())}.png"
     page.locator("#pickimg1").screenshot(path=str(captcha_path))
     log(f"Da chup anh captcha: {captcha_path}")
+
+    if cfg.captcha_mode == "auto":
+        code = ocr_captcha(captcha_path)
+        if not code:
+            log("CANH BAO: ddddocr khong nhan dien duoc ma captcha.")
+        else:
+            log("ddddocr da giai captcha tu dong.")
+        return code
 
     if cfg.captcha_mode == "external":
         if not cfg.captcha_solver_cmd:

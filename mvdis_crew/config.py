@@ -63,8 +63,8 @@ def load_settings(require_mvdis: bool = True, require_mail: bool = True) -> Sett
 
     captcha_mode = os.getenv("CAPTCHA_MODE", "manual").strip().lower()
     captcha_solver_cmd = os.getenv("CAPTCHA_SOLVER_CMD", "").strip()
-    if captcha_mode not in {"manual", "external"}:
-        errors.append("CAPTCHA_MODE chỉ nhận 'manual' hoặc 'external'.")
+    if captcha_mode not in {"manual", "external", "auto"}:
+        errors.append("CAPTCHA_MODE chỉ nhận 'auto', 'manual' hoặc 'external'.")
     if captcha_mode == "external" and not captcha_solver_cmd:
         errors.append("CAPTCHA_MODE=external nhưng CAPTCHA_SOLVER_CMD đang trống.")
 
