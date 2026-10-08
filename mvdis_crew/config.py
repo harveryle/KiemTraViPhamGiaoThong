@@ -42,6 +42,7 @@ class Settings:
     output_dir: Path = PROJECT_ROOT / "output"
     openai_model: str = "gpt-4o-mini"
     browser_channel: str = "chrome"
+    skip_email_if_no_violation: bool = False
 
     @property
     def masked_uid(self) -> str:
@@ -99,4 +100,5 @@ def load_settings(require_mvdis: bool = True, require_mail: bool = True) -> Sett
         output_dir=output_dir,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
         browser_channel=os.getenv("BROWSER_CHANNEL", "chrome").strip(),
+        skip_email_if_no_violation=_bool(os.getenv("SKIP_EMAIL_IF_NO_VIOLATION"), default=False),
     )

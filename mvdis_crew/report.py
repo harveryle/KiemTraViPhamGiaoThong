@@ -59,6 +59,14 @@ def diff_with_history(result: QueryResult, history_path: Path, save: bool = True
     }
 
 
+def should_skip_email(summary: dict, skip_if_no_violation: bool) -> bool:
+    """Bỏ qua email khi bật tuỳ chọn và tra cứu thành công nhưng không có vi phạm.
+
+    Chỉ trạng thái 'no_violation' mới bị bỏ qua; 'error'/'unknown' vẫn phải gửi để người dùng biết có sự cố.
+    """
+    return skip_if_no_violation and summary.get("status") == "no_violation"
+
+
 # --------------------------------------------------------------------------- trích xuất trường
 def _pick(v: dict, *names: str) -> str:
     """Lấy giá trị đầu tiên không rỗng có tên trường chứa một trong các từ khoá (bỏ qua khoá nội bộ '_...')."""
