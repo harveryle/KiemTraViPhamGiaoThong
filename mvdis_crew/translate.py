@@ -13,6 +13,7 @@ import os
 import re
 
 from .config import Settings
+from .usage import TRACKER
 
 log = logging.getLogger(__name__)
 
@@ -183,6 +184,10 @@ def _llm_translate(pending: list[tuple[str, str]], settings: Settings) -> dict[s
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
         )
+        if resp.usage:
+            TRACKER.add(
+                "Dịch Trung→Việt (OpenAI)", resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens
+            )
         data = json.loads(resp.choices[0].message.content or "{}")
     except Exception as exc:  # noqa: BLE001 - dịch lỗi không được chặn việc gửi mail
         log.warning("Dịch bằng OpenAI thất bại (%s) -> email chỉ hiện tiếng Trung cho các mục này", exc)

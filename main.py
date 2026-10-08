@@ -17,6 +17,7 @@ from mvdis_crew.mailer import send_email
 from mvdis_crew.report import diff_with_history
 from mvdis_crew.scraper import QueryResult, query_violations
 from mvdis_crew.translate import build_bilingual_email
+from mvdis_crew.usage import TRACKER
 
 os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
@@ -44,6 +45,15 @@ def run_without_llm(state) -> None:
     state.email_sent = True
 
 
+def record_crew_usage(crew) -> None:
+    """Cộng token của các agent CrewAI vào bộ đếm chung; lỗi đọc số liệu không được làm hỏng lần chạy."""
+    try:
+        m = crew.calculate_usage_metrics()
+        TRACKER.add("CrewAI (agents)", m.prompt_tokens, m.completion_tokens, m.total_tokens, m.successful_requests)
+    except Exception:  # noqa: BLE001
+        log.warning("Không đọc được số token của CrewAI", exc_info=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-llm", action="store_true", help="Không dùng CrewAI/OpenAI")
@@ -69,7 +79,11 @@ def main() -> int:
         else:
             from mvdis_crew.crew import build_crew
 
-            build_crew(state).kickoff()
+            crew = build_crew(state)
+            try:
+                crew.kickoff()
+            finally:
+                record_crew_usage(crew)  # ghi cả khi crew lỗi giữa chừng
             if not state.email_sent:
                 log.warning("Crew không gửi email -> gửi báo cáo dựng sẵn")
                 run_without_llm(state)
@@ -82,10 +96,12 @@ def main() -> int:
                 run_without_llm(state)
             except Exception:  # noqa: BLE001
                 log.exception("Không gửi được email báo lỗi")
+                log.info(TRACKER.report())
                 return 1
 
     status = state.result.status if state.result else "error"
     log.info("Hoàn tất. status=%s, email_sent=%s", status, state.email_sent)
+    log.info(TRACKER.report())
     return 0 if status in {"ok", "no_violation"} else 1
 
 
