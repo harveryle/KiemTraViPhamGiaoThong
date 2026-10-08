@@ -15,7 +15,7 @@ from datetime import datetime
 from mvdis_crew.config import ConfigError, load_settings
 from mvdis_crew.mailer import send_email
 from mvdis_crew.report import diff_with_history, should_skip_email
-from mvdis_crew.scraper import QueryResult, query_violations
+from mvdis_crew.scraper import QueryResult, query_with_recheck
 from mvdis_crew.translate import build_bilingual_email
 from mvdis_crew.usage import TRACKER
 
@@ -36,7 +36,7 @@ def setup_logging(output_dir) -> None:
 
 def run_without_llm(state) -> None:
     if state.result is None:
-        state.result = query_violations(state.settings)
+        state.result = query_with_recheck(state.settings)
         state.attachments = list(state.result.attachments)
     if state.summary is None:
         state.summary = diff_with_history(state.result, state.settings.output_dir / "history.json")
