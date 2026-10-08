@@ -16,13 +16,27 @@ from .config import Settings, load_settings
 log = logging.getLogger(__name__)
 
 
-def send_email(settings: Settings, subject: str, html_body: str, attachments: list[str] | None = None) -> None:
+def send_email(
+    settings: Settings,
+    subject: str,
+    html_body: str,
+    attachments: list[str] | None = None,
+    inline_images: dict[str, str] | None = None,
+    text_body: str = "",
+) -> None:
+    """inline_images: {cid: đường dẫn PNG} — ảnh hiện thẳng trong thân mail qua <img src="cid:...">."""
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = settings.gmail_address
     msg["To"] = ", ".join(settings.mail_to)
-    msg.set_content("Email này cần trình đọc hỗ trợ HTML.")
+    msg.set_content(text_body or "Email này cần trình đọc hỗ trợ HTML.")
     msg.add_alternative(html_body, subtype="html")
+
+    html_part = msg.get_body(preferencelist=("html",))
+    for cid, path in (inline_images or {}).items():
+        p = Path(path)
+        if p.is_file():
+            html_part.add_related(p.read_bytes(), "image", "png", cid=f"<{cid}>", filename=p.name)
 
     for path in attachments or []:
         p = Path(path)

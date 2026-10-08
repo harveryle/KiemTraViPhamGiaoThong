@@ -14,8 +14,9 @@ from datetime import datetime
 
 from mvdis_crew.config import ConfigError, load_settings
 from mvdis_crew.mailer import send_email
-from mvdis_crew.report import default_html, default_subject, diff_with_history
+from mvdis_crew.report import diff_with_history
 from mvdis_crew.scraper import QueryResult, query_violations
+from mvdis_crew.translate import build_bilingual_email
 
 os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
@@ -38,12 +39,8 @@ def run_without_llm(state) -> None:
         state.attachments = list(state.result.attachments)
     if state.summary is None:
         state.summary = diff_with_history(state.result, state.settings.output_dir / "history.json")
-    send_email(
-        state.settings,
-        default_subject(state.summary),
-        default_html(state.summary, state.settings.masked_uid),
-        state.attachments,
-    )
+    mail = build_bilingual_email(state.summary, state.settings)
+    send_email(state.settings, mail.subject, mail.html, state.attachments, mail.inline_images, mail.text)
     state.email_sent = True
 
 

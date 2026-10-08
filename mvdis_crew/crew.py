@@ -53,12 +53,9 @@ def build_crew(state: RunState) -> Crew:
     report_task = Task(
         description=(
             f"Hôm nay là {date.today():%Y-%m-%d}. "
-            "Soạn email HTML bằng tiếng Việt báo cáo kết quả tra cứu tuần này và gọi send_report_email "
-            "đúng MỘT lần (tiêu đề sẽ được hệ thống tự đặt). "
-            "Nội dung: trạng thái, bảng vi phạm (nếu có, đánh dấu MỚI), "
-            "tổng tiền phạt, hạn nộp gần nhất, lời nhắc rằng việc nộp phạt phải tự làm trên trang MVDIS, "
-            "và link https://www.mvdis.gov.tw/m3-emv-vil/vil/penaltyQueryPay. Nếu status là error/unknown "
-            "thì nêu rõ lý do từ message."
+            "Gọi send_report_email đúng MỘT lần, KHÔNG truyền tham số. Hệ thống tự dựng tiêu đề và nội dung "
+            "email tiếng Việt theo mẫu cố định (trạng thái, từng vi phạm với nguyên nhân/địa điểm/số tiền/"
+            "ngày/hạn, mã QR, tổng tiền phạt, lời nhắc tự thanh toán)."
         ),
         expected_output="Xác nhận đã gửi email.",
         agent=reporter_agent,
