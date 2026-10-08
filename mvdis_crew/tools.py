@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .config import Settings
 from .mailer import send_email
 from .report import diff_with_history, should_skip_email
-from .scraper import QueryResult, query_violations
+from .scraper import QueryResult, query_with_recheck
 from .translate import build_bilingual_email
 
 
@@ -45,7 +45,7 @@ class MVDISQueryTool(_StateTool):
     def _run(self) -> str:
         # Mỗi lần tra cứu tốn một captcha -> chỉ chạy một lần mỗi phiên.
         if self.state.result is None:
-            self.state.result = query_violations(self.state.settings)
+            self.state.result = query_with_recheck(self.state.settings)
             self.state.attachments = list(self.state.result.attachments)
         data = json.loads(self.state.result.to_json())
         data.pop("attachments", None)

@@ -124,6 +124,28 @@ def query_violations(settings: Settings) -> QueryResult:
         return QueryResult(status="error", message=f"{type(exc).__name__}: {exc}")
 
 
+def query_with_recheck(settings: Settings) -> QueryResult:
+    """Tra cứu; nếu kết quả là 'unknown' (cần kiểm tra thủ công) thì chạy lại trong phiên trình duyệt mới
+    tối đa `unknown_recheck_attempts` lần để xác nhận trước khi báo cáo. Chỉ 'unknown' mới được tra lại."""
+    result = query_violations(settings)
+    attachments = list(result.attachments)
+    rechecks = 0
+    while result.status == "unknown" and rechecks < settings.unknown_recheck_attempts:
+        rechecks += 1
+        log.warning(
+            "Kết quả cần kiểm tra thủ công (%s) -> tra cứu lại lần %d/%d để xác nhận",
+            result.message[:120], rechecks, settings.unknown_recheck_attempts,
+        )
+        result = query_violations(settings)
+        attachments += [a for a in result.attachments if a not in attachments]
+    if rechecks:
+        log.info("Sau %d lần tra cứu lại: status=%s", rechecks, result.status)
+        if result.status == "unknown":
+            result.message = f"{result.message} (đã tra cứu lại {rechecks} lần, kết quả vẫn không xác định)".strip()
+    result.attachments = attachments  # giữ ảnh/HTML của mọi lần chạy để đối chiếu khi vẫn 'unknown'
+    return result
+
+
 def _fill_form(page: Page, settings: Settings) -> None:
     if page.locator("#tab1_cont").is_hidden():
         page.click("span.tab1")

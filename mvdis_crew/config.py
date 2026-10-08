@@ -43,6 +43,7 @@ class Settings:
     openai_model: str = "gpt-4o-mini"
     browser_channel: str = "chrome"
     skip_email_if_no_violation: bool = False
+    unknown_recheck_attempts: int = 1
 
     @property
     def masked_uid(self) -> str:
@@ -101,4 +102,5 @@ def load_settings(require_mvdis: bool = True, require_mail: bool = True) -> Sett
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
         browser_channel=os.getenv("BROWSER_CHANNEL", "chrome").strip(),
         skip_email_if_no_violation=_bool(os.getenv("SKIP_EMAIL_IF_NO_VIOLATION"), default=False),
+        unknown_recheck_attempts=max(0, min(3, int(os.getenv("UNKNOWN_RECHECK_ATTEMPTS", "1") or 1))),
     )
