@@ -10,8 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
 from .mailer import send_email
-from .report import default_subject, diff_with_history
+from .report import diff_with_history
 from .scraper import QueryResult, query_violations
+from .translate import build_bilingual_email
 
 
 @dataclass
@@ -69,24 +70,28 @@ class HistoryTool(_StateTool):
 
 
 class _EmailArgs(BaseModel):
-    subject: str = Field(..., description="Tiêu đề email")
-    html_body: str = Field(..., description="Nội dung email dạng HTML")
+    subject: str = Field("", description="Bỏ qua — tiêu đề do hệ thống tự đặt")
+    html_body: str = Field("", description="Bỏ qua — nội dung do hệ thống dựng theo mẫu cố định")
 
 
 class SendEmailTool(_StateTool):
     name: str = "send_report_email"
     description: str = (
-        "Gửi email báo cáo tới danh sách người nhận đã cấu hình (ảnh chụp kết quả tự đính kèm). "
-        "Chỉ gọi MỘT lần."
+        "Gửi email báo cáo tới danh sách người nhận đã cấu hình. Tiêu đề và nội dung được hệ thống "
+        "dựng theo mẫu cố định (kèm ảnh QR, ảnh chụp kết quả) nên KHÔNG cần truyền nội dung. Chỉ gọi MỘT lần."
     )
     args_schema: Type[BaseModel] = _EmailArgs
 
-    def _run(self, subject: str, html_body: str) -> str:
+    def _run(self, subject: str = "", html_body: str = "") -> str:
         if self.state.email_sent:
             return "Email đã được gửi trước đó, không gửi lại."
-        # Tiêu đề do code tạo (LLM hay bịa ngày tháng).
-        if self.state.summary is not None:
-            subject = default_subject(self.state.summary)
-        send_email(self.state.settings, subject, html_body, self.state.attachments)
+        # Tiêu đề + nội dung do code dựng (LLM hay bịa ngày tháng / mỗi lần một kiểu trình bày).
+        if self.state.summary is None:
+            result = self.state.result or QueryResult(status="error", message="Chưa tra cứu.")
+            self.state.summary = diff_with_history(result, self.state.settings.output_dir / "history.json")
+        mail = build_bilingual_email(self.state.summary, self.state.settings)
+        send_email(
+            self.state.settings, mail.subject, mail.html, self.state.attachments, mail.inline_images, mail.text
+        )
         self.state.email_sent = True
         return f"Đã gửi email tới {len(self.state.settings.mail_to)} người nhận."

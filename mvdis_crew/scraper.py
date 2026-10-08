@@ -5,6 +5,7 @@ Chạy thử độc lập:  python -m mvdis_crew.scraper
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 URL = "https://www.mvdis.gov.tw/m3-emv-vil/vil/penaltyQueryPay"
 NOPAY_URL = URL + "?method=nopayPagination"
 SKIP_DETAIL_KEYS = ("QR",)
+QR_PATH_KEY = "_qr_path"  # khoá nội bộ: đường dẫn file PNG của mã QR thanh toán (không phải dữ liệu MVDIS)
 
 # Dấu hiệu nhận biết trên trang kết quả
 NO_DATA_MARKERS = ("查無", "無違規", "無應繳", "沒有")
@@ -93,7 +95,7 @@ def query_violations(settings: Settings) -> QueryResult:
                     continue
 
                 attachments = _snapshot(page, out, ts)
-                result = _parse_result(page, message, payable="可線上繳納")
+                result = _parse_result(page, message, payable="可線上繳納", out=out, ts=ts)
 
                 # Tab 不可繳 (không nộp online được) là trang riêng trong cùng phiên.
                 if result.status in {"ok", "no_violation"}:
@@ -103,7 +105,7 @@ def query_violations(settings: Settings) -> QueryResult:
                     except PWTimeout:
                         pass
                     attachments += _snapshot(page, out, ts + "_nopay")
-                    nopay = _parse_result(page, "", payable="不可線上繳納")
+                    nopay = _parse_result(page, "", payable="不可線上繳納", out=out, ts=ts + "_nopay")
                     if nopay.violations:
                         result.violations += nopay.violations
                         result.status = "ok"
@@ -158,25 +160,46 @@ def _snapshot(page: Page, out: Path, ts: str) -> list[str]:
     return [str(png), str(html)]
 
 
-def _parse_result(page: Page, message: str, payable: str = "") -> QueryResult:
+def _save_qr(data_uri: str, out: Path | None, ts: str, index: int) -> str:
+    """Lưu ảnh QR 台灣Pay (data URI base64 nhúng trong bảng chi tiết) ra file PNG, trả về đường dẫn."""
+    if not data_uri or out is None or "base64," not in data_uri:
+        return ""
+    try:
+        raw = base64.b64decode("".join(data_uri.split("base64,", 1)[1].split()))
+    except ValueError:
+        log.warning("Không giải mã được ảnh QR của vi phạm #%d", index)
+        return ""
+    path = out / f"qr_{ts}_{index}.png"
+    path.write_bytes(raw)
+    return str(path)
+
+
+def _parse_result(page: Page, message: str, payable: str = "", out: Path | None = None, ts: str = "") -> QueryResult:
     # 1) Mỗi vi phạm có bảng 罰鍰明細資訊 dạng dọc: mỗi dòng một <th> nhãn + một <td> giá trị.
+    #    Ảnh QR thanh toán (nếu có) nằm trong cùng bảng dưới dạng <img src="data:image/...;base64,...">.
     details = page.evaluate(
         """() => Array.from(document.querySelectorAll('table'))
             .filter(t => !t.querySelector('table'))
-            .map(t => Array.from(t.rows).map(r => {
-                const th = r.querySelector(':scope > th'), td = r.querySelector(':scope > td');
-                return (r.cells.length === 2 && th && td)
-                    ? [th.textContent.replace(/\\s+/g, ' ').trim(), td.textContent.replace(/\\s+/g, ' ').trim()]
-                    : null;
+            .map(t => ({
+                rows: Array.from(t.rows).map(r => {
+                    const th = r.querySelector(':scope > th'), td = r.querySelector(':scope > td');
+                    return (r.cells.length === 2 && th && td)
+                        ? [th.textContent.replace(/\\s+/g, ' ').trim(), td.textContent.replace(/\\s+/g, ' ').trim()]
+                        : null;
+                }),
+                qr: (t.querySelector('img[src^="data:image"]') || document.createElement('img')).getAttribute('src') || ''
             }))
-            .filter(rows => rows.length > 1 && rows.every(x => x))"""
+            .filter(d => d.rows.length > 1 && d.rows.every(x => x))"""
     )
     violations = []
-    for rows in details:
-        row = {k: v for k, v in rows if k and not any(s in k for s in SKIP_DETAIL_KEYS)}
+    for item in details:
+        row = {k: v for k, v in item["rows"] if k and not any(s in k for s in SKIP_DETAIL_KEYS)}
         if any("單號" in k for k in row) or "違規日" in row:
             if payable:
                 row["繳納方式"] = payable
+            qr_path = _save_qr(item.get("qr", ""), out, ts, len(violations) + 1)
+            if qr_path:
+                row[QR_PATH_KEY] = qr_path
             violations.append(row)
     if violations:
         return QueryResult(status="ok", violations=violations, message=message)
