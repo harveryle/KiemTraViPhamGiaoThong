@@ -88,7 +88,7 @@ def query_violations(settings: Settings) -> QueryResult:
                 except PWTimeout:
                     log.warning("Trang tải chậm, vẫn tiếp tục đọc kết quả")
 
-                message = " | ".join([*dialogs, _visible_message(page)]).strip(" |")
+                message = " | ".join([*dialogs, _visible_message(page), _captcha_error_text(page)]).strip(" |")
                 if message and any(m in message for m in CAPTCHA_ERROR_MARKERS):
                     log.warning("Captcha sai: %s", message)
                     _reload_captcha(page)
@@ -141,6 +141,18 @@ def _reload_captcha(page: Page) -> None:
     page.wait_for_timeout(1500)
 
 
+def _captcha_error_text(page: Page) -> str:
+    """MVDIS báo captcha sai ngay cạnh ô nhập ('驗證碼輸入錯誤'), không qua dialog/#showmsg."""
+    try:
+        body = page.inner_text("body")
+    except Exception:  # noqa: BLE001
+        return ""
+    for line in body.splitlines():
+        if "驗證碼" in line and any(k in line for k in ("錯誤", "不正確", "有誤", "失敗")):
+            return line.strip()
+    return ""
+
+
 def _visible_message(page: Page) -> str:
     texts: list[str] = []
     for sel in ("#showmsg", "#validateStr1"):
@@ -158,6 +170,17 @@ def _snapshot(page: Page, out: Path, ts: str) -> list[str]:
     page.screenshot(path=str(png), full_page=True)
     html.write_text(page.content(), encoding="utf-8")
     return [str(png), str(html)]
+
+
+def _is_violation_row(row: dict) -> bool:
+    """Một vi phạm thật phải có ngày vi phạm VÀ (lý do hoặc số tiền) với giá trị không rỗng.
+
+    Chặn việc nhặt nhầm các bảng nhãn/giá trị khác trên trang (vd. form 法人 có dòng '單號：' trống).
+    """
+    def val(*names: str) -> str:
+        return next((str(v).strip() for k, v in row.items() if any(n in k for n in names) and str(v).strip()), "")
+
+    return bool(val("違規日")) and bool(val("事由", "罰鍰"))
 
 
 def _save_qr(data_uri: str, out: Path | None, ts: str, index: int) -> str:
@@ -194,7 +217,7 @@ def _parse_result(page: Page, message: str, payable: str = "", out: Path | None 
     violations = []
     for item in details:
         row = {k: v for k, v in item["rows"] if k and not any(s in k for s in SKIP_DETAIL_KEYS)}
-        if any("單號" in k for k in row) or "違規日" in row:
+        if _is_violation_row(row):
             if payable:
                 row["繳納方式"] = payable
             qr_path = _save_qr(item.get("qr", ""), out, ts, len(violations) + 1)
@@ -223,7 +246,9 @@ def _parse_result(page: Page, message: str, payable: str = "", out: Path | None 
         for r in rows[1:]:
             if len(r) != len(header) or not any(r):
                 continue
-            parsed.append({(header[i] or f"col{i}"): r[i] for i in range(len(header))})
+            cand = {(header[i] or f"col{i}"): r[i] for i in range(len(header))}
+            if _is_violation_row(cand):  # bảng ngang phải có cột 違規日 + 事由/罰鍰 với dữ liệu thật
+                parsed.append(cand)
         if len(parsed) > len(best):
             best = parsed
 
